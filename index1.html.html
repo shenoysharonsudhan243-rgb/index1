@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Form & Admin Panel</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 5px;
+        }
+        #enquiryList > div {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 3px;
+            background-color: #f9f9f9;
+        }
+        #loginBox, #logoutBtn {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Public Enquiry Form</h2>
+        <form id="enquiryForm">
+            <label for="name">Name:</label><br>
+            <input type="text" id="name" required><br><br>
+
+            <label for="email">Email:</label><br>
+            <input type="email" id="email" required><br><br>
+
+            <label for="message">Message:</label><br>
+            <textarea id="message" required></textarea><br><br>
+
+            <button type="submit">Submit Enquiry</button>
+        </form>
+        <p id="status"></p>
+    </div>
+
+    <div class="container">
+        <h2>Admin Login</h2>
+        <div id="loginBox">
+            <input type="email" id="adminEmail" placeholder="Admin Email"><br><br>
+            <input type="password" id="adminPassword" placeholder="Password"><br><br>
+            <button id="loginBtn">Login</button>
+            <p id="loginStatus" style="color:red;"></p>
+        </div>
+
+        <hr>
+
+        <h2>Enquiries</h2>
+        <div id="enquiryList">Log in to view enquiries.</div>
+
+        <button id="logoutBtn" style="display:none;">Logout</button>
+    </div>
+
+<script>
+    // --- Firebase Config ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyD6bKM4SlUn1bUWnlua4Xbs07bj65J3Vns",
+      authDomain: "webform-92ba1.firebaseapp.com",
+      projectId: "webform-92ba1",
+      storageBucket: "webform-92ba1.firebasestorage.app",
+      messagingSenderId: "997411635786",
+      appId: "1:997411635786:web:d6c12ca2992221cedd1cb3"
+    };
+
+    // Init Firebase (Using global 'firebase' object from CDN scripts)
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = app.firestore(); // Get Firestore instance
+    const auth = app.auth();     // Get Auth instance
+    const timestamp = firebase.firestore.FieldValue.serverTimestamp; // Get server timestamp function
+
+    // --- DOM Elements for Admin Panel ---
+    const loginBox = document.getElementById("loginBox");
+    const enquiryList = document.getElementById("enquiryList");
+    const loginStatus = document.getElementById("loginStatus");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    // --- ADMIN PANEL FUNCTIONS ---
+
+    // MARK CONTACTED function (Now a global function)
+    async function markContacted(id) {
+        try {
+            // Updated syntax for v8 firestore: .collection('...').doc(id).update({...})
+            await db.collection("enquiries").doc(id).update({
+                status: "contacted"
+            });
+            alert("Marked as Contacted");
+        } catch (error) {
+            console.error("Error updating document:", error);
+        }
+    }
+    // No need for window.markContacted = markContacted because this is a standard script
+    // and the function is automatically added to the global scope.
+
+
+    // LOAD ENQUIRIES
+    function loadEnquiries() {
+        // Updated syntax for v8 firestore query: .collection('...').orderBy('...').onSnapshot
+        db.collection("enquiries")
+          .orderBy("createdAt", "desc")
+          .onSnapshot((snapshot) => {
+            enquiryList.innerHTML = ""; // Clear previous list
+
+            snapshot.forEach((docSnap) => {
+                const data = docSnap.data();
+
+                enquiryList.innerHTML += `
+                    <div style="border:1px solid #ccc; padding:10px; margin-bottom:10px;">
+                        <p><strong>Name:</strong> ${data.name}</p>
+                        <p><strong>Email:</strong> ${data.email}</p>
+                        <p><strong>Message:</strong> ${data.message}</p>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <button onclick="markContacted('${docSnap.id}')">Mark Contacted</button>
+                    </div>
+                `;
+            });
+        });
+    }
+
+    // AUTH STATE LISTENER
+    auth.onAuthStateChanged((user) => {
+        if (user) {
+            loginBox.style.display = "none";
+            logoutBtn.style.display = "block";
+            loadEnquiries(); // Load data only when logged in
+        } else {
+            loginBox.style.display = "block";
+            logoutBtn.style.display = "none";
+            enquiryList.innerHTML = "Log in to view enquiries.";
+        }
+    });
+
+    // LOGIN BUTTON
+    document.getElementById("loginBtn").addEventListener("click", () => {
+        const email = document.getElementById("adminEmail").value;
+        const password = document.getElementById("adminPassword").value;
+
+        auth.signInWithEmailAndPassword(email, password)
+            .then(() => loginStatus.innerText = "")
+            .catch((err) => loginStatus.innerText = err.message);
+    });
+
+    // LOGOUT BUTTON
+    logoutBtn.addEventListener("click", () => {
+        auth.signOut();
+    });
+
+    // --- PUBLIC FORM SUBMISSION ---
+
+    // Handle Form Submit
+    document.getElementById("enquiryForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const status = document.getElementById("status");
+        status.innerText = "Submitting...";
+
+        try {
+            // Updated syntax for v8 firestore: .collection('...').add({...})
+            await db.collection("enquiries").add({
+                name: document.getElementById("name").value,
+                email: document.getElementById("email").value,
+                message: document.getElementById("message").value,
+                status: "new",
+                createdAt: timestamp() // Use the v8 timestamp function
+            });
+
+            status.innerText = "Enquiry submitted successfully!";
+            document.getElementById("enquiryForm").reset();
+        } catch (error) {
+            status.innerText = "Error: " + error.message;
+            console.error(error);
+        }
+    });
+</script>
+</body>
+</html>
